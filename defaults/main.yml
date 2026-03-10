@@ -1,0 +1,47 @@
+---
+# defaults file for roles/begris-dns
+
+pdns_api_url: http://localhost:8081
+pdns_api_key: ""
+
+pdns_server_id: localhost
+
+pdns_zone_configs: {}
+#  - zone:
+#      name: string # Name of the zone (e.g. “example.com.”) MUST have a trailing dot
+#      type: Zone # fixed
+#      kind: Native # Zone kind, one of “Native”, “Master”, “Slave”, “Producer”, “Consumer”
+#      serial: 0
+#      notified_serial: 0
+#      edited_serial: 0
+#      masters:
+#        - string
+#      dnssec: true
+#      nsec3param: string
+#      nsec3narrow: true
+#      presigned: true
+#      soa_edit: string
+#      soa_edit_api: string
+#      api_rectify: true
+#      zone: string
+#      catalog: string
+#      account: string
+#      nameservers:
+#        - string
+#      master_tsig_key_ids:
+#        - string
+#      slave_tsig_key_ids:
+#        - string
+#    metadata: {}
+#    rrsets:
+#      - name: string
+#        type: string
+#        ttl: 0
+#        changetype: string
+#        records:
+#          - content: string
+#            disabled: true
+#        comments:
+#          - content: string
+#            account: string
+#            modified_at: 0

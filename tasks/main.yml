@@ -1,0 +1,9 @@
+---
+# tasks file for roles/begris-dns
+
+- name: Create PDNS zones
+  include_tasks: upsert-zone.yml
+  loop: "{{ pdns_zone_configs }}"
+  loop_control:
+    loop_var: zone # is used in upsert
+    label: "{{ zone.vars.zone }}"

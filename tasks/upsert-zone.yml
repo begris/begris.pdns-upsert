@@ -1,0 +1,115 @@
+---
+- name: "Check if zone already exists: {{ zone.vars.zone }}"
+  ansible.builtin.uri:
+    url: "{{ pdns_api_url }}/api/v1/servers/{{ pdns_server_id }}/zones/{{ zone.vars.zone }}"
+    method: GET
+    status_code: [200, 404]
+    body_format: json
+    headers:
+      X-API-Key: "{{ pdns_api_key }}"
+    body:
+      rrsets: false
+  register: zone_check
+  retries: 3
+
+- name: "Calculate new serial for PDNS zone {{ zone.vars.zone }}"
+  vars:
+    zone_exists: "{{ zone_check.status == 200 }}"
+  ansible.builtin.set_fact:
+    __zone_serial: "{{ zone_check.json.edited_serial + 1 }}"
+  when: zone_exists and one_check.json is defined
+
+- name: "Create or update PDNS zone {{ zone.vars.zone }}"
+  vars:
+    zone_exists: "{{ zone_check.status == 200 }}"
+    mode: "{{ zone_exists | ternary('PUT', 'POST') }}"
+    url_ext: "{{ zone_exists | ternary('/' + zone.vars.zone, '') }}"
+    zone_serial: "{{ __zone_serial is defined | ternary(__zone_serial, zone.vars.soa_fallback_serial) }}"
+    zone_body:
+      name: "{{ zone.vars.zone }}"
+      type: Zone
+      kind: "{{ zone.vars.kind }}"
+      #      dnssec: true
+      #      nsec3param: string
+      #      nsec3narrow: true
+      #      presigned: true
+      rrsets:
+        - name: "{{ zone.vars.zone }}"
+          type: SOA
+          ttl: "{{ zone.vars.default_ttl }}"
+          comments: []
+          records:
+            - content: >-
+                {{ zone.vars.primary_ns }} {{ zone.vars.hostmaster }} {{ zone_serial }} {{ zone.vars.soa_refresh }}
+                {{ zone.vars.soa_retry }} {{ zone.vars.soa_expires }} {{ zone.vars.soa_minimum_ttl }}
+              disabled: false
+        - name: "{{ zone.vars.zone }}"
+          type: NS
+          ttl: "{{ zone.vars.ns_ttl }}"
+          comments: []
+          records:
+            - content: "{{ zone.vars.primary_ns }}"
+              disabled: false
+      soa_edit: INCEPTION-INCREMENT  # INCEPTION-EPOCH
+      soa_edit_api: SOA-EDIT
+      api_rectify: true
+  ansible.builtin.uri:
+    url: "{{ pdns_api_url }}/api/v1/servers/{{ pdns_server_id }}/zones{{ url_ext }}"
+    method: "{{ mode }}"
+    status_code: [201, 204]
+    body_format: json
+    headers:
+      X-API-Key: "{{ pdns_api_key }}"
+    body: "{{ zone_body }}"
+  retries: 3
+
+- name: "Add or update metadata from configuration for zone {{ zone.vars.zone }}"
+  vars:
+    kind: "{{ metadata.key }}"
+  ansible.builtin.uri:
+    url: "{{ pdns_api_url }}/api/v1/servers/{{ pdns_server_id }}/zones/{{ zone.vars.zone }}/metadata/{{ kind }}"
+    method: PUT
+    status_code: [200]
+    body_format: json
+    headers:
+      X-API-Key: "{{ pdns_api_key }}"
+    body:
+      kind: "{{ kind }}"
+      metadata: "{{ metadata.value }}"
+  loop: "{{ zone.metadata | dict2items }}"
+  loop_control:
+    loop_var: metadata
+    label: "{{ metadata.key }}"
+  retries: 3
+
+- name: "Generate record set from configuration for zone {{ zone.vars.zone }}"
+  vars:
+    template:
+      name: "{{ record.name | default() }}{{ zone.vars.zone }}"
+      type: "{{ record.type }}"
+      ttl: 300
+      changetype: REPLACE
+      records: "{{ record.records }}"
+      comments: []
+  ansible.builtin.set_fact:
+    rrsets: "{{ rrsets | default([]) + [template] }}"
+  loop: "{{ zone.rrsets }}"
+  loop_control:
+    loop_var: record
+
+- name: "Add or update records to zone {{ zone.vars.zone }}"
+  ansible.builtin.uri:
+    url: "{{ pdns_api_url }}/api/v1/servers/{{ pdns_server_id }}/zones/{{ zone.vars.zone }}"
+    method: PATCH
+    status_code: [201, 204]
+    body_format: json
+    headers:
+      X-API-Key: "{{ pdns_api_key }}"
+    body:
+      rrsets: "{{ rrsets }}"
+  when: rrsets is defined and rrsets | length > 0
+  retries: 3
+
+- name: "Clean record set fact for zone {{ zone.vars.zone }}"
+  ansible.builtin.set_fact:
+    rrsets: []
